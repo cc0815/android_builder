@@ -8,24 +8,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout the code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4  # 升级到最新版本（可选，原 v2 仍可用但建议升级）
+
       - name: Set up JDK
-        uses: actions/setup-java@v1
+        uses: actions/setup-java@v4  # 升级到最新版本（可选，原 v1 已弃用）
         with:
-          java-version: 1.8
+          java-version: 8           # 修正语法：1.8 -> 8
+
       - id: get-project
         name: Get project name
-        run: echo "PROJECT=$(cat project-to-build)" >> $GITHUB_ENV
+        run: echo "PROJECT=$(cat project-to-build)" >> $GITHUB_OUTPUT  # 替换旧语法 ::set-output
+
       - name: Clone project
-        run: git clone --depth=1 $PROJECT project
+        run: git clone --depth=1 "${{ steps.get-project.outputs.PROJECT }}" project
+
       - name: Build the app
         working-directory: ./project
         run: |
           if [ ! -f "gradlew" ]; then gradle wrapper; fi
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace
+
       - name: Upload APK
-        uses: actions/upload-artifact@v4  # 更新为v4版本
+        uses: actions/upload-artifact@v4  # 关键修改：v2 -> v4
         with:
           name: my-build-apk
-          path: ./**/*.apk
+          path: ./project/**/*.apk        # 关键修改：调整路径匹配位置
+          # overwrite: true              # 可选：若需覆盖同名 Artifact
