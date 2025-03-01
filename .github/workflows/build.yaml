@@ -13,25 +13,29 @@ jobs:
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
-          java-version: 8 
+          distribution: temurin
+          java-version: 8
 
       - id: get-project
         name: Get project name
         run: echo "PROJECT=$(cat project-to-build)" >> $GITHUB_OUTPUT
 
       - name: Clone project
-        run: git clone --depth=1 "${{ steps.get-project.outputs.PROJECT }}" project
+        run: |
+          git clone --depth=1 "${{ steps.get-project.outputs.PROJECT }}" project
+          # 添加子模块初始化（如果项目有子模块）
+          cd project
+          git submodule update --init --recursive
 
       - name: Build the app
         working-directory: ./project
         run: |
-          if [ ! -f "gradlew" ]; then gradle wrapper; fi
-          chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
+          # 强制生成 Gradle Wrapper（避免旧版本问题）
+          gradle wrapper --gradle-version 8.5
+          
+          # 添加阿里云镜像加速依赖下载
+          sed -i "s|mavenCentral()|maven { url 'https://maven.aliyun.com/repository/public' }|g" build.gradle
+          sed -i "s|google()|maven { url 'https://maven.aliyun.com/repository/google' }|g" build.gradle
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: my-build-apk
-          path: ./project/**/*.apk
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace --refresh-dependencies
