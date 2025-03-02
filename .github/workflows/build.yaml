@@ -1,108 +1,31 @@
-name: Android CI
+name: android_build
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-
     steps:
-      # 1. 代码检出（自动处理子模块）
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Checkout the code
+        uses: actions/checkout@v2
+      - name: Set up JDK
+        uses: actions/setup-java@v1
         with:
-          submodules: recursive
-
-      # 2. 安装 Android SDK 组件（关键修复）
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          ndk-version: 25.2.9519653
-          sdk-platform: android-34
-          sdk-build-tools: 34.0.0
-
-      # 3. JDK 环境配置（多版本兼容）
-      - name: Setup JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-          check-latest: true
-
-      # 4. Gradle 缓存加速（带自动回退）
-      - name: Cache Gradle
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            ~/.android/build-cache
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
-      # 5. 构建环境准备（增强健壮性）
-      - name: Prepare build
+          java-version: 1.8
+      - id: get-project
+        name: Get project name
+        run: echo "::set-output name=PROJECT::$(cat project-to-build)"
+      - name: Clone project
+        run: git clone --depth=1 ${{ steps.get-project.outputs.PROJECT }} project
+      - name: Build the app
+        working-directory: ./project
         run: |
-          # 强制生成 wrapper（带版本回退）
-          if [ ! -f "gradlew" ]; then
-              ./gradlew wrapper --gradle-version 8.5 || gradle wrapper --gradle-version 7.4.2
-          fi
-
-          # 多层级镜像替换（处理多模块项目）
-          find . -name 'build.gradle' -exec sed -i.bak \
-            -e "s|mavenCentral()|maven { url 'https://maven.aliyun.com/repository/public' }|g" \
-            -e "s|google()|maven { url 'https://maven.aliyun.com/repository/google' }|g" \
-            -e "s|jcenter()|maven { url 'https://maven.aliyun.com/repository/jcenter' }|g" {} \;
-
-          # 权限修复
+          if [ ! -f "gradlew" ]; then gradle wrapper; fi
           chmod +x gradlew
-          mkdir -p ~/.android && touch ~/.android/repositories.cfg
-
-      # 6. 分步构建诊断（精准定位问题）
-      - name: Debug pre-build
-        run: |
-          ./gradlew --version
-          ./gradlew projects
-          ls -al
-
-      - name: Build with Gradle
-        run: |
-          set -o pipefail
-          ./gradlew clean assembleDebug \
-            --no-daemon \
-            --stacktrace \
-            --scan \
-            --warning-mode all \
-            2>&1 | tee build.log
-
-      # 7. 智能日志收集（三级回退策略）
-      - name: Upload build logs
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: failure-logs-${{ github.run_id }}
-          path: |
-            # 优先捕获详细报告
-            **/app/build/reports/**/*.*
-            # 次选原生日志
-            **/build/outputs/logs/**/*.*
-            # 最后捕获构建过程日志
-            build.log
-            # Android 系统日志
-            ~/.android/build-cache/*.log
-
-      # 8. APK 上传（动态路径匹配）
+          ./gradlew assembleDebug --stacktrace
       - name: Upload APK
-        if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v2
         with:
-          name: release-apks
-          path: |
-            **/build/outputs/apk/**/*.apk
-            **/build/outputs/bundle/**/*.aab
-          retention-days: 3
+          name: my-build-apk
+          path: ./**/*.apk
